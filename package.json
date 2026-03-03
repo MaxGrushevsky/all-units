@@ -2,12 +2,23 @@
   "name": "all-units",
   "version": "1.0.0",
   "description": "Universal unit converter — 13 categories, 100+ units. Zero dependencies. TypeScript-first.",
-  "keywords": ["unit", "convert", "converter", "units", "measurement", "length", "mass", "temperature", "pressure", "energy"],
+  "keywords": [
+    "unit",
+    "convert",
+    "converter",
+    "units",
+    "measurement",
+    "length",
+    "mass",
+    "temperature",
+    "pressure",
+    "energy"
+  ],
   "author": "MaxGrushevsky",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MaxGrushevsky/unit-convert.git"
+    "url": "git+https://github.com/MaxGrushevsky/unit-convert.git"
   },
   "homepage": "https://github.com/MaxGrushevsky/unit-convert#readme",
   "bugs": {
