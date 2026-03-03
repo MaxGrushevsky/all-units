@@ -1,0 +1,51 @@
+{
+  "name": "unit-convert",
+  "version": "1.0.0",
+  "description": "Universal unit converter — 13 categories, 100+ units. Zero dependencies. TypeScript-first.",
+  "keywords": ["unit", "convert", "converter", "units", "measurement", "length", "mass", "temperature", "pressure", "energy"],
+  "author": "MaxGrushevsky",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MaxGrushevsky/unit-convert.git"
+  },
+  "homepage": "https://github.com/MaxGrushevsky/unit-convert#readme",
+  "bugs": {
+    "url": "https://github.com/MaxGrushevsky/unit-convert/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  }
+}
