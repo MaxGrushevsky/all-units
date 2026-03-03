@@ -1,9 +1,9 @@
-# unit-convert
+# all-units
 
 > Universal unit converter — 13 categories, 100+ units. Zero dependencies. TypeScript-first.
 
-[![npm](https://img.shields.io/npm/v/unit-convert)](https://www.npmjs.com/package/unit-convert)
-[![license](https://img.shields.io/npm/l/unit-convert)](./LICENSE)
+[![npm](https://img.shields.io/npm/v/all-units)](https://www.npmjs.com/package/all-units)
+[![license](https://img.shields.io/npm/l/all-units)](./LICENSE)
 [![build](https://img.shields.io/github/actions/workflow/status/MaxGrushevsky/unit-convert/ci.yml)](https://github.com/MaxGrushevsky/unit-convert/actions)
 
 ## Features
@@ -21,17 +21,17 @@
 ## Install
 
 ```bash
-npm install unit-convert
+npm install all-units
 # or
-pnpm add unit-convert
+pnpm add all-units
 # or
-yarn add unit-convert
+yarn add all-units
 ```
 
 ## Usage
 
 ```ts
-import { convert } from 'unit-convert'
+import { convert } from 'all-units'
 
 // Fluent API (recommended)
 convert(100).from('cm').to('m')          // 1
@@ -53,7 +53,7 @@ convert(32, 'F', 'C')                    // 0
 CommonJS (require) is also supported:
 
 ```js
-const { convert } = require('unit-convert')
+const { convert } = require('all-units')
 
 convert(1, 'mi', 'km')  // 1.609344
 ```

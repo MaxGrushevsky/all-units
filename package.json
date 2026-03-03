@@ -1,5 +1,5 @@
 {
-  "name": "unit-convert",
+  "name": "all-units",
   "version": "1.0.0",
   "description": "Universal unit converter — 13 categories, 100+ units. Zero dependencies. TypeScript-first.",
   "keywords": ["unit", "convert", "converter", "units", "measurement", "length", "mass", "temperature", "pressure", "energy"],
