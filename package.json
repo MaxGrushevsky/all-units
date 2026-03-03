@@ -18,11 +18,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MaxGrushevsky/unit-convert.git"
+    "url": "git+https://github.com/MaxGrushevsky/all-units.git"
   },
-  "homepage": "https://github.com/MaxGrushevsky/unit-convert#readme",
+  "homepage": "https://github.com/MaxGrushevsky/all-units#readme",
   "bugs": {
-    "url": "https://github.com/MaxGrushevsky/unit-convert/issues"
+    "url": "https://github.com/MaxGrushevsky/all-units/issues"
   },
   "type": "module",
   "main": "./dist/index.cjs",
