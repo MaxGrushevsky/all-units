@@ -4,7 +4,6 @@
 
 [![npm](https://img.shields.io/npm/v/all-units)](https://www.npmjs.com/package/all-units)
 [![license](https://img.shields.io/npm/l/all-units)](./LICENSE)
-[![build](https://img.shields.io/github/actions/workflow/status/MaxGrushevsky/all-units/ci.yml)](https://github.com/MaxGrushevsky/all-units/actions)
 
 ## Features
 
