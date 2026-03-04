@@ -1,6 +1,6 @@
 {
   "name": "all-units",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Universal unit converter — 13 categories, 100+ units. Zero dependencies. TypeScript-first.",
   "keywords": [
     "unit",
@@ -28,6 +28,8 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "unpkg": "./dist/index.global.js",
+  "jsdelivr": "./dist/index.global.js",
   "exports": {
     ".": {
       "import": {
@@ -41,7 +43,11 @@
     }
   },
   "files": [
-    "dist",
+    "dist/index.js",
+    "dist/index.cjs",
+    "dist/index.d.ts",
+    "dist/index.d.cts",
+    "dist/index.global.js",
     "LICENSE",
     "README.md"
   ],

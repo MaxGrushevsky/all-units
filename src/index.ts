@@ -31,208 +31,130 @@ export type Category =
   | 'time' | 'speed' | 'pressure' | 'energy' | 'power'
   | 'digital' | 'angle' | 'frequency'
 
-// ─── Internal unit registry ───────────────────────────────────────────────────
+// ─── Linear unit data ─────────────────────────────────────────────────────────
+// Format: [category, { unit: base_factor, ... }]
+// Base units: length→m, mass→g, area→m², volume→L, time→s,
+//             speed→m/s, pressure→Pa, energy→J, power→W, digital→B,
+//             angle→deg, frequency→Hz
 
-type LinearEntry    = { factor: number }
-type NonLinearEntry = { toBase: (v: number) => number; fromBase: (v: number) => number }
-type UnitEntry      = LinearEntry | NonLinearEntry
+// US gallon = 231 in³ (exact), 1 in = 0.0254 m (exact) → 3.785411784 L
+const US_GAL_L = 231 * (0.0254 ** 3) * 1000
 
-function isLinear(e: UnitEntry): e is LinearEntry {
-  return 'factor' in e
-}
+const LINEAR_DATA: [string, Record<string, number>][] = [
+  ['length',    { um: 1e-6, mm: 1e-3, cm: 1e-2, m: 1, km: 1e3, in: 0.0254, ft: 0.3048, yd: 0.9144, mi: 1609.344, nmi: 1852 }],
+  ['mass',      { mg: 1e-3, g: 1, kg: 1e3, t: 1e6, oz: 28.349523125, lb: 453.59237, st: 6350.29318 }],
+  ['area',      { mm2: 1e-6, cm2: 1e-4, m2: 1, km2: 1e6, in2: 6.4516e-4, ft2: 0.09290304, yd2: 0.83612736, mi2: 2589988.110336, ha: 1e4, ac: 4046.8564224 }],
+  ['volume',    { ml: 0.001, cl: 0.01, dl: 0.1, l: 1, m3: 1000, tsp: US_GAL_L / 768, tbsp: US_GAL_L / 256, fl_oz: US_GAL_L / 128, cup: US_GAL_L / 16, pt: US_GAL_L / 8, qt: US_GAL_L / 4, gal: US_GAL_L, uk_gal: 4.54609 }],
+  ['time',      { ms: 1e-3, s: 1, min: 60, h: 3600, d: 86400, wk: 604800, mo: 2629746, yr: 31556952 }],
+  ['speed',     { 'm/s': 1, 'km/h': 1 / 3.6, mph: 0.44704, knot: 1852 / 3600, 'ft/s': 0.3048 }],
+  ['pressure',  { Pa: 1, kPa: 1e3, MPa: 1e6, bar: 1e5, atm: 101325, psi: 6894.757293168361, mmHg: 133.322387415, inHg: 3386.388640341 }],
+  ['energy',    { J: 1, kJ: 1e3, cal: 4.184, kcal: 4184, Wh: 3600, kWh: 3.6e6, BTU: 1055.05585262, eV: 1.602176634e-19 }],
+  ['power',     { W: 1, kW: 1e3, MW: 1e6, GW: 1e9, hp: 745.6998715822702 }],
+  ['digital',   { bit: 0.125, B: 1, KB: 1e3, MB: 1e6, GB: 1e9, TB: 1e12, PB: 1e15, KiB: 1024, MiB: 1048576, GiB: 1073741824, TiB: 1099511627776, PiB: 1125899906842624 }],
+  ['angle',     { deg: 1, rad: 57.29577951308232, grad: 0.9 }],
+  ['frequency', { Hz: 1, kHz: 1e3, MHz: 1e6, GHz: 1e9 }],
+]
 
-// US gallon = 231 in³ (exact definition), 1 in = 0.0254 m (exact)
-const US_GAL_L = 231 * (0.0254 ** 3) * 1000  // 3.785411784 litres
+// ─── Runtime lookup tables (built once at startup) ────────────────────────────
 
-const REGISTRY: Record<string, Record<string, UnitEntry>> = {
-  // ── Length (base: metre) ────────────────────────────────────────────────────
-  length: {
-    um:  { factor: 1e-6        },  // micrometre
-    mm:  { factor: 1e-3        },  // millimetre
-    cm:  { factor: 1e-2        },  // centimetre
-    m:   { factor: 1           },  // metre
-    km:  { factor: 1e3         },  // kilometre
-    in:  { factor: 0.0254      },  // inch
-    ft:  { factor: 0.3048      },  // foot
-    yd:  { factor: 0.9144      },  // yard
-    mi:  { factor: 1609.344    },  // mile
-    nmi: { factor: 1852        },  // nautical mile
-  },
+// Unit → numeric index.
+// Linear units: indices 0..N-1. Temperature units: indices N..N+3.
+// All valid units get a defined index — no Map miss on the hot path.
+// Indices >= N signal "temperature unit" to the dispatch logic.
+const UNIT_IDX = new Map<string, number>()
 
-  // ── Mass (base: gram) ───────────────────────────────────────────────────────
-  mass: {
-    mg:  { factor: 1e-3        },  // milligram
-    g:   { factor: 1           },  // gram
-    kg:  { factor: 1e3         },  // kilogram
-    t:   { factor: 1e6         },  // metric ton
-    oz:  { factor: 28.349523125},  // ounce
-    lb:  { factor: 453.59237   },  // pound
-    st:  { factor: 6350.29318  },  // stone
-  },
+// Flat typed array of all pre-computed linear conversion factors.
+// Layout: FACTORS[fromIdx * N + toIdx] where N = total number of linear units.
+// Cross-category slots remain 0 — sentinel for "invalid linear-linear pair".
+// Float64Array: contiguous memory + hardware-optimised integer index arithmetic.
+let _idx = 0
+for (const [, factors] of LINEAR_DATA)
+  for (const u of Object.keys(factors)) UNIT_IDX.set(u, _idx++)
 
-  // ── Temperature (base: Celsius) ─────────────────────────────────────────────
-  temperature: {
-    C: { toBase: v => v,                    fromBase: v => v                    },
-    F: { toBase: v => (v - 32) * 5 / 9,    fromBase: v => v * 9 / 5 + 32      },
-    K: { toBase: v => v - 273.15,           fromBase: v => v + 273.15          },
-    R: { toBase: v => (v - 491.67) * 5 / 9, fromBase: v => v * 9 / 5 + 491.67 },
-  },
+const N = _idx  // 93 linear units
+const FACTORS = new Float64Array(N * N)
 
-  // ── Area (base: square metre) ───────────────────────────────────────────────
-  area: {
-    mm2:  { factor: 1e-6          },  // mm²
-    cm2:  { factor: 1e-4          },  // cm²
-    m2:   { factor: 1             },  // m²
-    km2:  { factor: 1e6           },  // km²
-    in2:  { factor: 6.4516e-4     },  // in²
-    ft2:  { factor: 0.09290304    },  // ft²
-    yd2:  { factor: 0.83612736    },  // yd²
-    mi2:  { factor: 1609.344 ** 2  },  // mi² = (1609.344 m)²
-    ha:   { factor: 1e4           },  // hectare
-    ac:   { factor: 4046.8564224  },  // acre
-  },
-
-  // ── Volume (base: litre) ────────────────────────────────────────────────────
-  volume: {
-    ml:     { factor: 0.001              },  // millilitre
-    cl:     { factor: 0.01               },  // centilitre
-    dl:     { factor: 0.1                },  // decilitre
-    l:      { factor: 1                  },  // litre
-    m3:     { factor: 1000               },  // cubic metre
-    // US customary units derived from the gallon to guarantee exact ratios
-    // (3 tsp = 1 tbsp, 2 tbsp = 1 fl_oz, 8 fl_oz = 1 cup, 2 cup = 1 pt, etc.)
-    tsp:    { factor: US_GAL_L / 768     },  // US teaspoon
-    tbsp:   { factor: US_GAL_L / 256     },  // US tablespoon
-    fl_oz:  { factor: US_GAL_L / 128     },  // US fluid ounce
-    cup:    { factor: US_GAL_L / 16      },  // US cup
-    pt:     { factor: US_GAL_L / 8       },  // US pint
-    qt:     { factor: US_GAL_L / 4       },  // US quart
-    gal:    { factor: US_GAL_L           },  // US gallon
-    uk_gal: { factor: 4.54609            },  // UK gallon
-  },
-
-  // ── Time (base: second) ─────────────────────────────────────────────────────
-  time: {
-    ms:  { factor: 1e-3       },  // millisecond
-    s:   { factor: 1          },  // second
-    min: { factor: 60         },  // minute
-    h:   { factor: 3600       },  // hour
-    d:   { factor: 86400      },  // day
-    wk:  { factor: 604800     },  // week
-    mo:  { factor: 2629746    },  // month (avg = 30.4375 days)
-    yr:  { factor: 31556952   },  // year  (avg = 365.2425 days)
-  },
-
-  // ── Speed (base: metre/second) ──────────────────────────────────────────────
-  speed: {
-    'm/s':  { factor: 1           },
-    'km/h': { factor: 1 / 3.6     },
-    mph:    { factor: 0.44704     },
-    knot:   { factor: 1852 / 3600 },  // = 0.51̄4̄ m/s (exact)
-    'ft/s': { factor: 0.3048      },
-  },
-
-  // ── Pressure (base: Pascal) ─────────────────────────────────────────────────
-  pressure: {
-    Pa:   { factor: 1          },
-    kPa:  { factor: 1e3        },
-    MPa:  { factor: 1e6        },
-    bar:  { factor: 1e5        },
-    atm:  { factor: 101325     },
-    psi:  { factor: 0.45359237 * 9.80665 / (0.0254 ** 2) },  // lbf/in² → Pa
-    mmHg: { factor: 13595.1 * 9.80665 * 0.001  },  // conventional mmHg
-    inHg: { factor: 13595.1 * 9.80665 * 0.0254 },  // = mmHg × 25.4  (1 in = 25.4 mm)
-  },
-
-  // ── Energy (base: Joule) ────────────────────────────────────────────────────
-  energy: {
-    J:    { factor: 1            },
-    kJ:   { factor: 1e3          },
-    cal:  { factor: 4.184        },  // thermochemical calorie
-    kcal: { factor: 4184         },  // kilocalorie
-    Wh:   { factor: 3600         },
-    kWh:  { factor: 3.6e6        },
-    BTU:  { factor: 1055.05585262 },  // IT (International Table) BTU
-    eV:   { factor: 1.602176634e-19 },
-  },
-
-  // ── Power (base: Watt) ──────────────────────────────────────────────────────
-  power: {
-    W:   { factor: 1        },
-    kW:  { factor: 1e3      },
-    MW:  { factor: 1e6      },
-    GW:  { factor: 1e9      },
-    hp:  { factor: 550 * 0.3048 * 0.45359237 * 9.80665 },  // 550 ft·lbf/s → W
-  },
-
-  // ── Digital storage (base: byte) ────────────────────────────────────────────
-  digital: {
-    bit: { factor: 0.125          },  // 1/8 byte
-    B:   { factor: 1              },  // byte
-    KB:  { factor: 1e3            },  // kilobyte  (SI)
-    MB:  { factor: 1e6            },  // megabyte  (SI)
-    GB:  { factor: 1e9            },  // gigabyte  (SI)
-    TB:  { factor: 1e12           },  // terabyte  (SI)
-    PB:  { factor: 1e15           },  // petabyte  (SI)
-    KiB: { factor: 1024           },  // kibibyte  (IEC)
-    MiB: { factor: 1048576        },  // mebibyte  (IEC)
-    GiB: { factor: 1073741824     },  // gibibyte  (IEC)
-    TiB: { factor: 1099511627776  },  // tebibyte  (IEC)
-    PiB: { factor: 1125899906842624 },// pebibyte  (IEC)
-  },
-
-  // ── Angle (base: degree) ────────────────────────────────────────────────────
-  angle: {
-    deg:  { factor: 1                },  // degree
-    rad:  { factor: 180 / Math.PI   },  // radian  → 57.2958°
-    grad: { factor: 0.9              },  // gradian (400 grad = 360°)
-  },
-
-  // ── Frequency (base: Hertz) ─────────────────────────────────────────────────
-  frequency: {
-    Hz:  { factor: 1    },
-    kHz: { factor: 1e3  },
-    MHz: { factor: 1e6  },
-    GHz: { factor: 1e9  },
-  },
-}
-
-// ─── Build unit→category lookup (computed once at startup) ───────────────────
-
-const UNIT_CATEGORY: Record<string, string> = {}
-for (const [category, units] of Object.entries(REGISTRY)) {
-  for (const unit of Object.keys(units)) {
-    UNIT_CATEGORY[unit] = category
+for (const [, factors] of LINEAR_DATA) {
+  const units = Object.keys(factors)
+  for (const u of units) {
+    const fi = UNIT_IDX.get(u)!
+    const fFrom = factors[u]
+    for (const v of units) {
+      FACTORS[fi * N + UNIT_IDX.get(v)!] = fFrom / factors[v]
+    }
   }
 }
+
+// Temperature units registered with indices >= N so UNIT_IDX.get() always hits
+// for valid units — V8 can cache the IC as "always returns number" instead of
+// "sometimes returns undefined", which speeds up the common-case dispatch.
+const TEMP_UNITS = ['C', 'F', 'K', 'R']
+for (const u of TEMP_UNITS) UNIT_IDX.set(u, _idx++)
+
+// Unit → category (for error messages and public API)
+const UNIT_CATEGORY = new Map<string, string>()
+
+// Category → unit list (for listUnits / possibilities)
+const CAT_UNITS = new Map<string, string[]>()
+
+for (const [cat, factors] of LINEAR_DATA) {
+  const units = Object.keys(factors)
+  CAT_UNITS.set(cat, units)
+  for (const u of units) UNIT_CATEGORY.set(u, cat)
+}
+
+CAT_UNITS.set('temperature', TEMP_UNITS)
+for (const u of TEMP_UNITS) UNIT_CATEGORY.set(u, 'temperature')
+
+// Temperature converters keyed by "from\0to".
+// A 12-entry Map with short string keys is benchmarked to be faster than any
+// 2-level object/Map approach because V8 interns short strings and its Map
+// implementation is heavily JIT-optimised for this exact pattern.
+const TEMP_FN = new Map<string, (v: number) => number>([
+  ['C\0F', (v: number) => v * 9 / 5 + 32           ],
+  ['C\0K', (v: number) => v + 273.15               ],
+  ['C\0R', (v: number) => (v + 273.15) * 9 / 5    ],
+  ['F\0C', (v: number) => (v - 32) * 5 / 9        ],
+  ['F\0K', (v: number) => (v - 32) * 5 / 9 + 273.15],
+  ['F\0R', (v: number) => v + 459.67              ],
+  ['K\0C', (v: number) => v - 273.15              ],
+  ['K\0F', (v: number) => (v - 273.15) * 9 / 5 + 32],
+  ['K\0R', (v: number) => v * 9 / 5               ],
+  ['R\0C', (v: number) => (v - 491.67) * 5 / 9   ],
+  ['R\0F', (v: number) => v - 459.67              ],
+  ['R\0K', (v: number) => v * 5 / 9               ],
+])
 
 // ─── Core conversion logic ────────────────────────────────────────────────────
 
 function convertValue(value: number, from: string, to: string): number {
   if (from === to) return value
 
-  const category = UNIT_CATEGORY[from]
-  if (!category) throw new Error(`Unknown unit: "${from}"`)
-  if (!UNIT_CATEGORY[to]) throw new Error(`Unknown unit: "${to}"`)
-  if (UNIT_CATEGORY[to] !== category) {
-    throw new Error(
-      `Cannot convert "${from}" (${category}) to "${to}" (${UNIT_CATEGORY[to]})`
-    )
+  const fi = UNIT_IDX.get(from)
+
+  if (fi !== undefined) {
+    if (fi < N) {
+      // Linear path: Float64Array index — no hash tables, zero allocs
+      const ti = UNIT_IDX.get(to)
+      if (ti !== undefined) {
+        if (ti < N) {
+          const f = FACTORS[fi * N + ti]
+          if (f !== 0) return value * f
+        }
+        // f === 0 (cross-category linear) or ti >= N (linear → temperature)
+        throw new Error(`Cannot convert "${from}" (${UNIT_CATEGORY.get(from)}) to "${to}" (${UNIT_CATEGORY.get(to)})`)
+      }
+      throw new Error(`Unknown unit: "${to}"`)
+    }
+
+    // Temperature path (fi >= N): UNIT_IDX hit for all valid units, no miss overhead
+    const fn = TEMP_FN.get(`${from}\0${to}`)
+    if (fn !== undefined) return fn(value)
+    if (!UNIT_CATEGORY.has(to)) throw new Error(`Unknown unit: "${to}"`)
+    throw new Error(`Cannot convert "${from}" (temperature) to "${to}" (${UNIT_CATEGORY.get(to)})`)
   }
 
-  const units = REGISTRY[category]
-  const fromDef = units[from]
-  const toDef   = units[to]
-
-  // Convert to base unit
-  const base = isLinear(fromDef)
-    ? value * fromDef.factor
-    : fromDef.toBase(value)
-
-  // Convert from base unit
-  return isLinear(toDef)
-    ? base / toDef.factor
-    : toDef.fromBase(base)
+  throw new Error(`Unknown unit: "${from}"`)
 }
 
 // ─── Fluent builder ───────────────────────────────────────────────────────────
@@ -294,13 +216,13 @@ export function listUnits(): Record<Category, string[]>
 export function listUnits(category: Category): string[]
 export function listUnits(category?: Category): Record<Category, string[]> | string[] {
   if (category !== undefined) {
-    const units = REGISTRY[category]
+    const units = CAT_UNITS.get(category)
     if (!units) throw new Error(`Unknown category: "${category}"`)
-    return Object.keys(units)
+    return units
   }
   const result = {} as Record<Category, string[]>
-  for (const [cat, units] of Object.entries(REGISTRY)) {
-    result[cat as Category] = Object.keys(units)
+  for (const [cat, units] of CAT_UNITS) {
+    result[cat as Category] = units
   }
   return result
 }
@@ -314,8 +236,8 @@ export function listUnits(category?: Category): Record<Category, string[]> | str
  * canConvert('cm', 'kg')  // false
  */
 export function canConvert(from: string, to: string): boolean {
-  const cat = UNIT_CATEGORY[from]
-  return cat !== undefined && UNIT_CATEGORY[to] === cat
+  const cat = UNIT_CATEGORY.get(from)
+  return cat !== undefined && UNIT_CATEGORY.get(to) === cat
 }
 
 /**
@@ -326,7 +248,7 @@ export function canConvert(from: string, to: string): boolean {
  * getCategory('K')   // 'temperature'
  */
 export function getCategory(unit: string): Category | undefined {
-  return UNIT_CATEGORY[unit] as Category | undefined
+  return UNIT_CATEGORY.get(unit) as Category | undefined
 }
 
 /**
@@ -342,7 +264,7 @@ export function getCategory(unit: string): Category | undefined {
  * @throws {Error} if the unit is unknown.
  */
 export function possibilities(unit: Unit): string[] {
-  const cat = UNIT_CATEGORY[unit as string]
+  const cat = UNIT_CATEGORY.get(unit as string)
   if (!cat) throw new Error(`Unknown unit: "${unit}"`)
-  return Object.keys(REGISTRY[cat])
+  return CAT_UNITS.get(cat)!
 }
